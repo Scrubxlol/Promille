@@ -73,7 +73,7 @@
     }
 
     // Rechnen
-    const gewicht=300, r=0.68, abbau=0.13;
+    const gewicht=70, r=0.68, abbau=0.13;
     const nf = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     let drinks = JSON.parse(localStorage.getItem('drinks')||'[]').map(d=>({...d,t:new Date(d.t)}));
 
