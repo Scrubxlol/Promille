@@ -25,11 +25,32 @@
     .prom{font-size:1.8rem;font-weight:700;margin:10px 4px 6px}
     .muted{color:var(--muted)}
     .entry{margin-bottom:8px}
+    small{color:var(--muted)}
   </style>
 </head>
 <body>
   <div class="wrap">
     <h1>Promille Rechner</h1>
+
+    <!-- Benutzer-Einstellungen -->
+    <div class="card">
+      <div class="row">
+        <label>Gewicht:
+          <input type="number" id="gewichtInput" inputmode="decimal" min="40" max="200" step="1" style="width:110px"> kg
+        </label>
+        <!-- optional: andere Verteilungszahl später auswählbar -->
+        <label>Verteilungsfaktor:
+          <select id="rInput">
+            <option value="0.68" selected>0,68 (Standard)</option>
+            <option value="0.55">0,55 (niedriger)</option>
+            <option value="0.75">0,75 (höher)</option>
+          </select>
+        </label>
+      </div>
+      <small>Gewicht &amp; Faktor werden lokal gespeichert.</small>
+    </div>
+
+    <!-- Eingabe Getränke -->
     <div class="card">
       <div class="row">
         <label>Getränk:
@@ -48,6 +69,7 @@
       </div>
       <div class="row">
         <button id="addDrinkBtn">Jetzt getrunken</button>
+        <button id="addPlanBtn" class="ghost">Für später planen</button>
         <button id="resetBtn" class="ghost">Zurücksetzen</button>
       </div>
     </div>
@@ -56,66 +78,145 @@
 
     <div id="log" class="card">
       <b>Getrunkene Getränke</b>
-      <div class="muted" id="emptyMsg">Noch nichts erfasst.</div>
+      <div class="muted" id="emptyLog">Noch nichts erfasst.</div>
     </div>
 
-    <div class="muted card">
-      <small>Offline nutzbar: Diese App kann als PWA zum Home-Bildschirm hinzugefügt werden.</small>
+    <div id="plan" class="card">
+      <b>Geplante Getränke</b>
+      <div class="muted" id="emptyPlan">Keine geplant.</div>
     </div>
+
+    <div class="card"><small>Offline nutzbar, Daten bleiben im Browser gespeichert.</small></div>
   </div>
 
   <script>
-    // PWA: Service Worker registrieren
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js');
-      });
+    // ---------- Einstellungen laden/speichern ----------
+    const nf = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const S = {
+      get gewicht(){ return +(localStorage.getItem('pr_gewicht') || 80); },
+      set gewicht(v){ localStorage.setItem('pr_gewicht', String(v)); },
+      get r(){ return +(localStorage.getItem('pr_r') || 0.68); },
+      set r(v){ localStorage.setItem('pr_r', String(v)); }
+    };
+
+    // ---------- Daten ----------
+    let drinks = [];
+    let plans  = [];
+
+    function saveData(){
+      localStorage.setItem('pr_drinks', JSON.stringify(drinks));
+      localStorage.setItem('pr_plans',  JSON.stringify(plans));
+    }
+    function loadData(){
+      try {
+        drinks = JSON.parse(localStorage.getItem('pr_drinks') || '[]');
+        plans  = JSON.parse(localStorage.getItem('pr_plans')  || '[]');
+      } catch(e){ drinks=[]; plans=[]; }
     }
 
-    // Rechnen
-    const gewicht=70, r=0.68, abbau=0.13;
-    const nf = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    let drinks = JSON.parse(localStorage.getItem('drinks')||'[]').map(d=>({...d,t:new Date(d.t)}));
-
-    function g(type,liter){ return liter * (type==='bier'?0.05:0.025) * 0.8 * 1000; }
-    function prom(){
+    // ---------- Rechnen ----------
+    const abbau = 0.13; // ‰ pro Stunde
+    function alkoholGramm(type, liter){
+      const vol = (type === 'bier') ? 0.05 : 0.025;
+      return liter * vol * 0.8 * 1000; // g
+    }
+    function promilleJetzt(){
       const now = Date.now();
-      let x=0;
+      let x = 0;
       for(const d of drinks){
         const h = Math.max(0, (now - new Date(d.t)) / 36e5);
-        const p = d.g / (gewicht*r) - h*abbau;
+        const p = d.g / (S.gewicht * S.r) - h * abbau;
         x += Math.max(0, p);
       }
       return x;
     }
+
+    // ---------- UI ----------
     function update(){
-      document.getElementById('promilleAnzeige').textContent = 'Aktuelle Promille: ' + nf.format(prom()) + '‰';
+      // Promille
+      document.getElementById('promilleAnzeige').textContent =
+        'Aktuelle Promille: ' + nf.format(promilleJetzt()) + '‰';
+
+      // Log
       const L = document.getElementById('log');
-      const empty = document.getElementById('emptyMsg');
-      L.querySelectorAll('.entry').forEach(e=>e.remove());
-      if(!drinks.length){ empty.style.display='block'; return; }
-      empty.style.display='none';
-      for(const d of drinks){
-        const t=new Date(d.t).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'});
-        const div=document.createElement('div');
-        div.className='entry';
-        div.textContent = `🕒 ${t}: ${nf.format(d.s)} L ${d.ty==='bier'?'Bier':'Radler'}`;
-        L.appendChild(div);
+      const emptyL = document.getElementById('emptyLog');
+      L.querySelectorAll('.entry').forEach(e => e.remove());
+      if(!drinks.length){ emptyL.style.display = 'block'; }
+      else {
+        emptyL.style.display = 'none';
+        for(const d of drinks){
+          const t = new Date(d.t).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+          const div = document.createElement('div');
+          div.className = 'entry';
+          div.textContent = `🕒 ${t}: ${nf.format(d.s)} L ${d.ty==='bier'?'Bier':'Radler'}`;
+          L.appendChild(div);
+        }
+      }
+
+      // Plan
+      const P = document.getElementById('plan');
+      const emptyP = document.getElementById('emptyPlan');
+      P.querySelectorAll('.entry').forEach(e => e.remove());
+      if(!plans.length){ emptyP.style.display = 'block'; }
+      else {
+        emptyP.style.display = 'none';
+        plans.forEach((d,i)=>{
+          const e = document.createElement('div');
+          e.className = 'entry';
+          const name = d.ty==='bier'?'Bier':'Radler';
+          e.innerHTML = `📅 ${nf.format(d.s)} L ${name} <button class="ghost" data-i="${i}">Jetzt trinken</button>`;
+          P.appendChild(e);
+        });
+        P.querySelectorAll('button.ghost').forEach(btn => btn.onclick = () => {
+          const i = +btn.dataset.i;
+          const it = plans.splice(i,1)[0];
+          drinks.push({ ty: it.ty, s: it.s, g: alkoholGramm(it.ty,it.s), t: Date.now() });
+          saveData(); update();
+        });
       }
     }
-    function addDrink(){
-      const ty = document.getElementById('drinkType').value;
-      const s = parseFloat(document.getElementById('drinkSize').value);
-      drinks.push({ty:ty, s:s, g:g(ty,s), t:Date.now()});
-      localStorage.setItem('drinks', JSON.stringify(drinks));
-      update();
-    }
-    function resetAll(){ drinks=[]; localStorage.removeItem('drinks'); update(); }
 
-    document.getElementById('addDrinkBtn').addEventListener('click', addDrink);
-    document.getElementById('resetBtn').addEventListener('click', resetAll);
+    function bind(){
+      // Initialwerte in Inputs setzen
+      const gEl = document.getElementById('gewichtInput');
+      const rEl = document.getElementById('rInput');
+      gEl.value = S.gewicht;
+      rEl.value = String(S.r);
+
+      gEl.addEventListener('change', () => { S.gewicht = Math.max(40, Math.min(200, +gEl.value||80)); update(); });
+      rEl.addEventListener('change', () => { S.r = +rEl.value || 0.68; update(); });
+
+      document.getElementById('addDrinkBtn').addEventListener('click', () => {
+        const ty = document.getElementById('drinkType').value;
+        const s  = parseFloat(document.getElementById('drinkSize').value);
+        drinks.push({ ty, s, g: alkoholGramm(ty,s), t: Date.now() });
+        saveData(); update();
+      });
+
+      document.getElementById('addPlanBtn').addEventListener('click', () => {
+        const ty = document.getElementById('drinkType').value;
+        const s  = parseFloat(document.getElementById('drinkSize').value);
+        plans.push({ ty, s }); saveData(); update();
+      });
+
+      document.getElementById('resetBtn').addEventListener('click', () => {
+        if(confirm('Alles löschen?')){
+          drinks = []; plans = [];
+          saveData(); update();
+        }
+      });
+    }
+
+    // Start
+    loadData(); bind(); update();
     setInterval(update, 30000);
-    update();
+    
+    // PWA: Service Worker registrieren (optional, wenn lokal / ohne Pages geladen => ignoriert)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(()=>{});
+      });
+    }
   </script>
 </body>
 </html>
