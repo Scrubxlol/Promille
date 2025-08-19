@@ -4,8 +4,8 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Promille Rechner</title>
-  <link rel="manifest" href="manifest.webmanifest">
   <meta name="theme-color" content="#0a84ff">
+  <link rel="manifest" href="manifest.webmanifest">
   <style>
     :root{--bg:#f7f7f7;--card:#fff;--text:#111;--muted:#666;--primary:#0a84ff;--danger:#d9534f;--radius:14px}
     @media (prefers-color-scheme: dark){:root{--bg:#0b0b0b;--card:#1a1a1a;--text:#f2f2f2;--muted:#aaa}}
@@ -13,18 +13,18 @@
     body{margin:0;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg);
       padding:env(safe-area-inset-top) 12px calc(12px + env(safe-area-inset-bottom))}
     .wrap{max-width:720px;margin:0 auto}
-    h1{font-size:1.4rem;margin:8px 4px 10px}
+    h1{font-size:1.4rem;margin:8px 4px 12px}
     .card{background:var(--card);border-radius:var(--radius);padding:14px;box-shadow:0 1px 2px rgba(0,0,0,.06);margin-bottom:12px}
     .row{display:flex;flex-wrap:wrap;gap:8px}
     label{display:inline-flex;align-items:center;gap:6px;margin:6px 8px 6px 0}
-    input,select,button{font-size:1rem;padding:12px 14px;border-radius:12px;border:1px solid rgba(0,0,0,.1);background:#fff}
+    input,select,button{font-size:1rem;padding:10px 12px;border-radius:12px;border:1px solid rgba(0,0,0,.12);background:#fff}
     @media (prefers-color-scheme: dark){input,select,button{background:#121212;border-color:rgba(255,255,255,.12);color:var(--text)}}
     button{background:var(--primary);border:none;color:#fff;min-height:44px}
     button.ghost{background:transparent;color:var(--text);border:1px solid rgba(0,0,0,.12)}
     #resetBtn{background:var(--danger)}
     .prom{font-size:1.8rem;font-weight:700;margin:10px 4px 6px}
     .muted{color:var(--muted)}
-    .entry{margin-bottom:8px}
+    .entry{margin-top:6px}
     small{color:var(--muted)}
   </style>
 </head>
@@ -32,35 +32,28 @@
   <div class="wrap">
     <h1>Promille Rechner</h1>
 
-    <!-- Benutzer-Einstellungen -->
+    <!-- Profil -->
     <div class="card">
       <div class="row">
-        <label>Gewicht:
-          <input type="number" id="gewichtInput" inputmode="decimal" min="40" max="200" step="1" style="width:110px"> kg
+        <label>Gewicht (kg):
+          <input id="w" type="number" inputmode="decimal" min="40" max="200" step="1" placeholder="z. B. 70">
         </label>
-        <!-- optional: andere Verteilungszahl später auswählbar -->
-        <label>Verteilungsfaktor:
-          <select id="rInput">
-            <option value="0.68" selected>0,68 (Standard)</option>
-            <option value="0.55">0,55 (niedriger)</option>
-            <option value="0.75">0,75 (höher)</option>
-          </select>
-        </label>
+        <button id="saveW" class="ghost">Speichern</button>
       </div>
-      <small>Gewicht &amp; Faktor werden lokal gespeichert.</small>
+      <small>Hinweis: Widmark-Faktor r = 0,68 (Richtwert). Gewicht wird lokal gespeichert.</small>
     </div>
 
-    <!-- Eingabe Getränke -->
+    <!-- Eingabe -->
     <div class="card">
       <div class="row">
         <label>Getränk:
-          <select id="drinkType">
+          <select id="t">
             <option value="bier">Bier (5%)</option>
-            <option value="radler">Radler (2.5%)</option>
+            <option value="radler">Radler (2,5%)</option>
           </select>
         </label>
         <label>Menge:
-          <select id="drinkSize">
+          <select id="s">
             <option value="0.3">0,3 L</option>
             <option value="0.4">0,4 L</option>
             <option value="0.5" selected>0,5 L</option>
@@ -70,153 +63,143 @@
       <div class="row">
         <button id="addDrinkBtn">Jetzt getrunken</button>
         <button id="addPlanBtn" class="ghost">Für später planen</button>
-        <button id="resetBtn" class="ghost">Zurücksetzen</button>
+        <button id="resetBtn">Alles löschen</button>
       </div>
     </div>
 
     <div class="prom" id="promilleAnzeige">Aktuelle Promille: 0,00‰</div>
 
-    <div id="log" class="card">
+    <div class="card" id="log">
       <b>Getrunkene Getränke</b>
       <div class="muted" id="emptyLog">Noch nichts erfasst.</div>
     </div>
 
-    <div id="plan" class="card">
+    <div class="card" id="plan">
       <b>Geplante Getränke</b>
       <div class="muted" id="emptyPlan">Keine geplant.</div>
     </div>
 
-    <div class="card"><small>Offline nutzbar, Daten bleiben im Browser gespeichert.</small></div>
+    <div class="muted card"><small>Offline nutzbar (PWA). Zum Home-Bildschirm hinzufügen für App-Modus.</small></div>
   </div>
 
   <script>
-    // ---------- Einstellungen laden/speichern ----------
-    const nf = new Intl.NumberFormat('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const S = {
-      get gewicht(){ return +(localStorage.getItem('pr_gewicht') || 80); },
-      set gewicht(v){ localStorage.setItem('pr_gewicht', String(v)); },
-      get r(){ return +(localStorage.getItem('pr_r') || 0.68); },
-      set r(v){ localStorage.setItem('pr_r', String(v)); }
-    };
+    // ---- PWA Service Worker (optional, wenn sw.js vorhanden) ----
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+    }
 
-    // ---------- Daten ----------
-    let drinks = [];
-    let plans  = [];
+    // ---- State ----
+    const r = 0.68;                // Widmark-Faktor (Richtwert)
+    const abbau = 0.13;            // ‰ pro Stunde
+    const nf = new Intl.NumberFormat('de-DE', {minimumFractionDigits:2, maximumFractionDigits:2});
 
-    function saveData(){
+    let gewicht = Number(localStorage.getItem('pr_weight') || 70);       // Standard 70 kg
+    let drinks = [];  // {ty,s,g,t}
+    let plans  = [];  // {ty,s}
+
+    // Load persisted
+    try {
+      drinks = JSON.parse(localStorage.getItem('pr_drinks') || '[]');
+      plans  = JSON.parse(localStorage.getItem('pr_plans')  || '[]');
+    } catch { drinks=[]; plans=[]; }
+
+    // UI refs
+    const wInput = document.getElementById('w');
+    const saveW  = document.getElementById('saveW');
+    const POUT   = document.getElementById('promilleAnzeige');
+
+    // Init weight field
+    wInput.value = gewicht;
+
+    // Helpers
+    function alkoholGram(type, liter){ return liter * (type==='bier'?0.05:0.025) * 0.8 * 1000; }
+    function promilleNow(){
+      const now = Date.now();
+      let sum = 0;
+      for (const d of drinks){
+        const h = Math.max(0, (now - new Date(d.t)) / 36e5);
+        const p0 = d.g / (gewicht * r);
+        sum += Math.max(0, p0 - h * abbau);
+      }
+      return sum;
+    }
+    function fmtTime(ts){ return new Date(ts).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit'}); }
+
+    function render(){
+      // promille
+      POUT.textContent = 'Aktuelle Promille: ' + nf.format(promilleNow()) + '‰';
+
+      // log
+      const log = document.getElementById('log');
+      const emptyL = document.getElementById('emptyLog');
+      log.querySelectorAll('.entry').forEach(e => e.remove());
+      if (!drinks.length) { emptyL.style.display='block'; }
+      else {
+        emptyL.style.display='none';
+        drinks.forEach(d => {
+          const div = document.createElement('div');
+          div.className = 'entry';
+          div.textContent = `🕒 ${fmtTime(d.t)}: ${nf.format(d.s)} L ${d.ty==='bier'?'Bier':'Radler'}`;
+          log.appendChild(div);
+        });
+      }
+
+      // plan
+      const planBox = document.getElementById('plan');
+      const emptyP = document.getElementById('emptyPlan');
+      planBox.querySelectorAll('.entry').forEach(e => e.remove());
+      if (!plans.length) { emptyP.style.display='block'; }
+      else {
+        emptyP.style.display='none';
+        plans.forEach((d,i) => {
+          const e = document.createElement('div');
+          e.className = 'entry';
+          e.innerHTML = `📅 ${nf.format(d.s)} L ${d.ty==='bier'?'Bier':'Radler'} 
+            <button class="ghost" data-i="${i}">Jetzt trinken</button>`;
+          planBox.appendChild(e);
+        });
+        planBox.querySelectorAll('button.ghost').forEach(btn => btn.onclick = () => {
+          const i = Number(btn.dataset.i);
+          const it = plans.splice(i,1)[0];
+          drinks.push({ty:it.ty, s:it.s, g:alkoholGram(it.ty,it.s), t:Date.now()});
+          persist(); render();
+        });
+      }
+    }
+
+    function persist(){
+      localStorage.setItem('pr_weight', String(gewicht));
       localStorage.setItem('pr_drinks', JSON.stringify(drinks));
       localStorage.setItem('pr_plans',  JSON.stringify(plans));
     }
-    function loadData(){
-      try {
-        drinks = JSON.parse(localStorage.getItem('pr_drinks') || '[]');
-        plans  = JSON.parse(localStorage.getItem('pr_plans')  || '[]');
-      } catch(e){ drinks=[]; plans=[]; }
-    }
 
-    // ---------- Rechnen ----------
-    const abbau = 0.13; // ‰ pro Stunde
-    function alkoholGramm(type, liter){
-      const vol = (type === 'bier') ? 0.05 : 0.025;
-      return liter * vol * 0.8 * 1000; // g
-    }
-    function promilleJetzt(){
-      const now = Date.now();
-      let x = 0;
-      for(const d of drinks){
-        const h = Math.max(0, (now - new Date(d.t)) / 36e5);
-        const p = d.g / (S.gewicht * S.r) - h * abbau;
-        x += Math.max(0, p);
+    // Handlers
+    document.getElementById('addDrinkBtn').onclick = () => {
+      const ty = document.getElementById('t').value;
+      const s  = parseFloat(document.getElementById('s').value);
+      drinks.push({ty:ty, s:s, g:alkoholGram(ty,s), t:Date.now()});
+      persist(); render();
+    };
+    document.getElementById('addPlanBtn').onclick = () => {
+      const ty = document.getElementById('t').value;
+      const s  = parseFloat(document.getElementById('s').value);
+      plans.push({ty:ty, s:s});
+      persist(); render();
+    };
+    document.getElementById('resetBtn').onclick = () => {
+      if (confirm('Alles löschen?')) {
+        drinks = []; plans = [];
+        persist(); render();
       }
-      return x;
-    }
+    };
+    saveW.onclick = () => {
+      const v = Number(wInput.value);
+      if (!isFinite(v) || v < 40 || v > 200) { alert('Bitte Gewicht zwischen 40–200 kg eingeben.'); return; }
+      gewicht = v; persist(); render();
+    };
 
-    // ---------- UI ----------
-    function update(){
-      // Promille
-      document.getElementById('promilleAnzeige').textContent =
-        'Aktuelle Promille: ' + nf.format(promilleJetzt()) + '‰';
-
-      // Log
-      const L = document.getElementById('log');
-      const emptyL = document.getElementById('emptyLog');
-      L.querySelectorAll('.entry').forEach(e => e.remove());
-      if(!drinks.length){ emptyL.style.display = 'block'; }
-      else {
-        emptyL.style.display = 'none';
-        for(const d of drinks){
-          const t = new Date(d.t).toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
-          const div = document.createElement('div');
-          div.className = 'entry';
-          div.textContent = `🕒 ${t}: ${nf.format(d.s)} L ${d.ty==='bier'?'Bier':'Radler'}`;
-          L.appendChild(div);
-        }
-      }
-
-      // Plan
-      const P = document.getElementById('plan');
-      const emptyP = document.getElementById('emptyPlan');
-      P.querySelectorAll('.entry').forEach(e => e.remove());
-      if(!plans.length){ emptyP.style.display = 'block'; }
-      else {
-        emptyP.style.display = 'none';
-        plans.forEach((d,i)=>{
-          const e = document.createElement('div');
-          e.className = 'entry';
-          const name = d.ty==='bier'?'Bier':'Radler';
-          e.innerHTML = `📅 ${nf.format(d.s)} L ${name} <button class="ghost" data-i="${i}">Jetzt trinken</button>`;
-          P.appendChild(e);
-        });
-        P.querySelectorAll('button.ghost').forEach(btn => btn.onclick = () => {
-          const i = +btn.dataset.i;
-          const it = plans.splice(i,1)[0];
-          drinks.push({ ty: it.ty, s: it.s, g: alkoholGramm(it.ty,it.s), t: Date.now() });
-          saveData(); update();
-        });
-      }
-    }
-
-    function bind(){
-      // Initialwerte in Inputs setzen
-      const gEl = document.getElementById('gewichtInput');
-      const rEl = document.getElementById('rInput');
-      gEl.value = S.gewicht;
-      rEl.value = String(S.r);
-
-      gEl.addEventListener('change', () => { S.gewicht = Math.max(40, Math.min(200, +gEl.value||80)); update(); });
-      rEl.addEventListener('change', () => { S.r = +rEl.value || 0.68; update(); });
-
-      document.getElementById('addDrinkBtn').addEventListener('click', () => {
-        const ty = document.getElementById('drinkType').value;
-        const s  = parseFloat(document.getElementById('drinkSize').value);
-        drinks.push({ ty, s, g: alkoholGramm(ty,s), t: Date.now() });
-        saveData(); update();
-      });
-
-      document.getElementById('addPlanBtn').addEventListener('click', () => {
-        const ty = document.getElementById('drinkType').value;
-        const s  = parseFloat(document.getElementById('drinkSize').value);
-        plans.push({ ty, s }); saveData(); update();
-      });
-
-      document.getElementById('resetBtn').addEventListener('click', () => {
-        if(confirm('Alles löschen?')){
-          drinks = []; plans = [];
-          saveData(); update();
-        }
-      });
-    }
-
-    // Start
-    loadData(); bind(); update();
-    setInterval(update, 30000);
-    
-    // PWA: Service Worker registrieren (optional, wenn lokal / ohne Pages geladen => ignoriert)
-    if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        navigator.serviceWorker.register('./sw.js').catch(()=>{});
-      });
-    }
+    setInterval(render, 30000);
+    render();
   </script>
 </body>
 </html>
